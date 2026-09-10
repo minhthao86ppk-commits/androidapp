@@ -1,22 +1,21 @@
 package com.example.trackoffline;
 
 import android.Manifest;
+import android.app.Activity;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
-
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -27,7 +26,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-public class MainActivity extends AppCompatActivity implements LocationListener {
+public class MainActivity extends Activity implements LocationListener {
 
     private TextView tvStatus, tvLocation, tvNavInfo;
     private Button btnStart, btnStop;
@@ -39,7 +38,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Khởi tạo giao diện trực tiếp bằng Java, không phụ thuộc vào lớp R
+        ScrollView scrollView = new ScrollView(this);
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(40, 40, 40, 40);
@@ -77,7 +76,8 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         tvNavInfo.setPadding(0, 30, 0, 0);
         layout.addView(tvNavInfo);
 
-        setContentView(layout);
+        scrollView.addView(layout);
+        setContentView(scrollView);
 
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
 
@@ -97,22 +97,35 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
     }
 
     private void startTracking() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-            }, 101);
-            return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                }, 101);
+                return;
+            }
         }
 
         trackPoints.clear();
         isTracking = true;
         if (locationManager != null) {
-            // Cập nhật vị trí mỗi 2 giây hoặc khi di chuyển từ 1 mét
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 1, this);
         }
         tvStatus.setText("Trạng thái: Đang ghi hành trình GPS...");
         Toast.makeText(this, "Đã bắt đầu ghi lộ trình", Toast.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 101) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startTracking();
+            } else {
+                Toast.makeText(this, "Cần cấp quyền Vị trí để sử dụng GPS", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 
     private void stopTrackingAndSaveGPX() {
@@ -136,8 +149,14 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
     }
 
     private void saveToGPX() {
-        String fileName = "Track_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date()) + ".gpx";
-        File dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+        String fileName = "Track_" + timeStamp + ".gpx";
+
+        // Ưu tiên lưu thẳng vào thư mục Download để cắm máy tính nhìn thấy ngay
+        File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        if (dir == null || !dir.exists()) {
+            dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
+        }
         if (dir != null && !dir.exists()) {
             dir.mkdirs();
         }
@@ -160,31 +179,31 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
 
         try (FileWriter writer = new FileWriter(file)) {
             writer.write(gpx.toString());
-            Toast.makeText(this, "Đã lưu GPX: " + file.getName(), Toast.LENGTH_LONG).show();
-            tvNavInfo.setText("Tệp đã lưu tại: " + file.getAbsolutePath());
+            Toast.makeText(this, "Đã lưu vào thư mục Download!", Toast.LENGTH_LONG).show();
+            tvNavInfo.setText("Tệp đã lưu tại:\n" + file.getAbsolutePath());
         } catch (IOException e) {
-            Toast.makeText(this, "Lỗi khi lưu file GPX", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Lỗi khi ghi tệp GPX", Toast.LENGTH_SHORT).show();
         }
     }
 
     @Override
-    public void onLocationChanged(@NonNull Location location) {
+    public void onLocationChanged(Location location) {
         if (!isTracking) return;
 
         trackPoints.add(location);
-        tvLocation.setText(String.format(Locale.getDefault(), "Tọa độ: %.6f, %.6f | Số điểm: %d",
-                location.getLatitude(), location.getLongitude(), trackPoints.size()));
+        tvLocation.setText(String.format(Locale.getDefault(), "Tọa độ: %.6f, %.6f\nSố điểm: %d | Độ cao: %.1fm",
+                location.getLatitude(), location.getLongitude(), trackPoints.size(), location.getAltitude()));
 
-        // Chỉ đường cơ bản theo vết hành trình (Backtrack)
+        // Chỉ đường quay về theo vết (Backtrack)
         if (trackPoints.size() > 1) {
             Location prev = trackPoints.get(trackPoints.size() - 2);
             float dist = location.distanceTo(prev);
             float bearing = location.bearingTo(prev);
-            tvNavInfo.setText(String.format(Locale.getDefault(), "Cách điểm trước: %.1fm | Góc quay: %.1f°", dist, bearing));
+            tvNavInfo.setText(String.format(Locale.getDefault(), "Cách điểm trước: %.1fm\nGóc quay: %.1f°", dist, bearing));
         }
     }
 
-    @Override public void onProviderEnabled(@NonNull String provider) {}
-    @Override public void onProviderDisabled(@NonNull String provider) {}
+    @Override public void onProviderEnabled(String provider) {}
+    @Override public void onProviderDisabled(String provider) {}
     @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
 }
