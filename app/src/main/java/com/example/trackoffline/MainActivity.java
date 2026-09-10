@@ -1,41 +1,36 @@
 package com.example.trackoffline;
 
 import android.Manifest;
-import android.content.Context;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Environment;
+import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+
 import java.io.File;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity implements LocationListener {
 
-    private LocationManager locationManager;
     private TextView tvStatus, tvLocation, tvNavInfo;
     private Button btnStart, btnStop;
-
+    private LocationManager locationManager;
     private boolean isTracking = false;
-    private final List<Location> trackPoints = new ArrayList<>();
-    private static final int PERMISSION_REQUEST_CODE = 1001;
-
-    @Override
-    protected void组织(Bundle savedInstanceState) {
-        // Reserved
-    }
+    private ArrayList<Location> trackPoints = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,113 +43,109 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         btnStart = findViewById(R.id.btnStart);
         btnStop = findViewById(R.id.btnStop);
 
-        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
 
-        btnStart.setOnClickListener(v -> startTracking());
-        btnStop.setOnClickListener(v -> stopTrackingAndSave());
-
-        checkLocationPermission();
-    }
-
-    private void checkLocationPermission() {
+        // Kiểm tra quyền vị trí khi khởi động ứng dụng
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                    PERMISSION_REQUEST_CODE);
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
         }
+
+        btnStart.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startTracking();
+            }
+        });
+
+        btnStop.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                stopTrackingAndSaveGPX();
+            }
+        });
     }
 
     private void startTracking() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            checkLocationPermission();
-            return;
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            isTracking = true;
+            trackPoints.clear();
+            tvStatus.setText("Trạng thái: Đang ghi hành trình GPS...");
+            // Cập nhật tọa độ mỗi 5 mét hoặc 3 giây
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 3000, 5, this);
+            Toast.setItem(this, "Đã bắt đầu ghi lộ trình", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "Chưa cấp quyền GPS!", Toast.LENGTH_SHORT).show();
         }
-
-        trackPoints.clear();
-        isTracking = true;
-        tvStatus.setText("Trạng thái: Đang ghi hành trình...");
-        
-        // Nhận cập nhật GPS mỗi 2 giây hoặc di chuyển trên 3 mét
-        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 3.0f, this);
-        Toast.makeText(this, "Bắt đầu ghi GPS", Toast.LENGTH_SHORT).show();
     }
 
-    private void stopTrackingAndSave() {
+    private void stopTrackingAndSaveGPX() {
         if (!isTracking) {
-            Toast.makeText(this, "Chưa bật chế độ ghi!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Chưa bật ghi hành trình!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        isTracking = false;
+        locationManager.removeUpdates(this);
+        tvStatus.setText("Trạng thái: Đã dừng ghi.");
+
+        if (trackPoints.isEmpty()) {
+            Toast.makeText(this, "Không có dữ liệu tọa độ để lưu!", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        isTracking = false;
-        locationManager.removeUpdates(this);
-        tvStatus.setText("Trạng thái: Đã dừng");
+        // Xuất file GPX lưu vào bộ nhớ máy
+        try {
+            String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+            File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            File file = new File(dir, "hox_hanh_trinh_" + timeStamp + ".gpx");
 
-        saveTrackToGpx();
+            FileWriter writer = new FileWriter(file);
+            writer.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+            writer.append("<gpx version=\"1.1\" creator=\"OfflineTracker-J2\">\n");
+            writer.append("  <trk>\n");
+            writer.append("    <name>Hành trình " + timeStamp + "</name>\n");
+            writer.append("    <trkseg>\n");
+
+            for (Location loc : trackPoints) {
+                writer.append("      <trkpt lat=\"" + loc.getLatitude() + "\" lon=\"" + loc.getLongitude() + "\">\n");
+                writer.append("        <ele>" + loc.getAltitude() + "</ele>\n");
+                writer.append("      </trkpt>\n");
+            }
+
+            writer.append("    </trkseg>\n");
+            writer.append("  </trk>\n");
+            writer.append("</gpx>\n");
+            writer.flush();
+            writer.close();
+
+            Toast.makeText(this, "Đã lưu GPX vào Thư mục Download!", Toast.LENGTH_LONG).show();
+            tvNavInfo.setText("Đã xuất file: hox_hanh_trinh_" + timeStamp + ".gpx");
+        } catch (IOException e) {
+            e.printStackTrace();
+            Toast.makeText(this, "Lỗi khi lưu file GPX: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     @Override
     public void onLocationChanged(@NonNull Location location) {
-        double lat = location.getLatitude();
-        double lon = location.getLongitude();
-        double alt = location.getAltitude();
-
-        tvLocation.setText(String.format(Locale.getDefault(), 
-                "Vĩ độ: %.6f\nKinh độ: %.6f\nĐộ cao: %.1f m\nTốc độ: %.1f km/h", 
-                lat, lon, alt, (location.getSpeed() * 3.6)));
-
         if (isTracking) {
             trackPoints.add(location);
-            tvNavInfo.setText("Số điểm đã lưu: " + trackPoints.size());
         }
+        String info = String.format(Locale.getDefault(), "Lat: %.6f | Lon: %.6f\nĐộ cao: %.1fm | Tốc độ: %.1fm/s",
+                location.getLatitude(),
+                location.getLongitude(),
+                location.getAltitude(),
+                location.getSpeed());
+        tvLocation.setText(info);
     }
 
-    private void saveTrackToGpx() {
-        if (trackPoints.isEmpty()) {
-            Toast.makeText(this, "Không có dữ liệu để lưu!", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-        String fileName = "Track_" + timeStamp + ".gpx";
-
-        File exportDir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
-        if (exportDir == null) {
-            exportDir = getFilesDir();
-        }
-
-        File file = new File(exportDir, fileName);
-
-        try (FileWriter writer = new FileWriter(file)) {
-            writer.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-            writer.append("<gpx version=\"1.1\" creator=\"OfflineTracker\">\n");
-            writer.append("  <trk>\n    <name>Hanh Trinh ").append(timeStamp).append("</name>\n    <trkseg>\n");
-
-            SimpleDateFormat isoFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
-
-            for (Location pt : trackPoints) {
-                writer.append(String.format(Locale.US,
-                        "      <trkpt lat=\"%.6f\" lon=\"%.6f\">\n" +
-                        "        <ele>%.1f</ele>\n" +
-                        "        <time>%s</time>\n" +
-                        "      </trkpt>\n",
-                        pt.getLatitude(), pt.getLongitude(), pt.getAltitude(), isoFormat.format(new Date(pt.getTime()))));
-            }
-
-            writer.append("    </trkseg>\n  </trk>\n</gpx>");
-            writer.flush();
-
-            Toast.makeText(this, "Đã lưu: " + file.getName(), Toast.LENGTH_LONG).show();
-            tvNavInfo.setText("Tệp đã lưu tại:\n" + file.getAbsolutePath());
-        } catch (Exception e) {
-            Toast.makeText(this, "Lỗi khi lưu file: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
-    }
+    @Override
+    public void onStatusChanged(String provider, int status, Bundle extras) {}
 
     @Override
     public void onProviderEnabled(@NonNull String provider) {}
 
     @Override
     public void onProviderDisabled(@NonNull String provider) {
-        tvStatus.setText("Cảnh báo: GPS đã bị tắt!");
+        Toast.makeText(this, "Hãy bật GPS trên thiết bị!", Toast.LENGTH_LONG).show();
     }
 }
