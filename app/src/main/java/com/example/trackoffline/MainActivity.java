@@ -1,9 +1,8 @@
 package com.example.trackoffline;
 
-import com.example.trackoffline.R;
-
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -11,6 +10,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.view.View;
 import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -38,13 +38,46 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
 
-        tvStatus = findViewById(R.id.tvStatus);
-        tvLocation = findViewById(R.id.tvLocation);
-        tvNavInfo = findViewById(R.id.tvNavInfo);
-        btnStart = findViewById(R.id.btnStart);
-        btnStop = findViewById(R.id.btnStop);
+        // Khởi tạo giao diện trực tiếp bằng Java, không phụ thuộc vào lớp R
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(40, 40, 40, 40);
+
+        TextView tvTitle = new TextView(this);
+        tvTitle.setText("ĐỊNH VỊ & GHI HÀNH TRÌNH OFFLINE");
+        tvTitle.setTextSize(18);
+        tvTitle.setTextColor(Color.BLACK);
+        tvTitle.setPadding(0, 0, 0, 30);
+        layout.addView(tvTitle);
+
+        tvStatus = new TextView(this);
+        tvStatus.setText("Trạng thái: Sẵn sàng nhận tín hiệu GPS");
+        tvStatus.setTextSize(15);
+        tvStatus.setPadding(0, 0, 0, 20);
+        layout.addView(tvStatus);
+
+        tvLocation = new TextView(this);
+        tvLocation.setText("Tọa độ: Chưa có tín hiệu");
+        tvLocation.setTextSize(14);
+        tvLocation.setPadding(0, 0, 0, 30);
+        layout.addView(tvLocation);
+
+        btnStart = new Button(this);
+        btnStart.setText("Bắt đầu ghi hành trình");
+        layout.addView(btnStart);
+
+        btnStop = new Button(this);
+        btnStop.setText("Dừng & Lưu file GPX");
+        layout.addView(btnStop);
+
+        tvNavInfo = new TextView(this);
+        tvNavInfo.setText("Chỉ đường: Chưa kích hoạt");
+        tvNavInfo.setTextSize(14);
+        tvNavInfo.setPadding(0, 30, 0, 0);
+        layout.addView(tvNavInfo);
+
+        setContentView(layout);
 
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
 
@@ -75,7 +108,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         trackPoints.clear();
         isTracking = true;
         if (locationManager != null) {
-            // Cập nhật vị trí mỗi 2 giây hoặc khi di chuyển từ 1m
+            // Cập nhật vị trí mỗi 2 giây hoặc khi di chuyển từ 1 mét
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 1, this);
         }
         tvStatus.setText("Trạng thái: Đang ghi hành trình GPS...");
@@ -139,15 +172,15 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         if (!isTracking) return;
 
         trackPoints.add(location);
-        tvLocation.setText(String.format(Locale.getDefault(), "Tọa độ: %.6f, %.6f | Điểm: %d",
+        tvLocation.setText(String.format(Locale.getDefault(), "Tọa độ: %.6f, %.6f | Số điểm: %d",
                 location.getLatitude(), location.getLongitude(), trackPoints.size()));
 
-        // Chỉ đường cơ bản theo vết (Backtrack)
+        // Chỉ đường cơ bản theo vết hành trình (Backtrack)
         if (trackPoints.size() > 1) {
             Location prev = trackPoints.get(trackPoints.size() - 2);
             float dist = location.distanceTo(prev);
             float bearing = location.bearingTo(prev);
-            tvNavInfo.setText(String.format(Locale.getDefault(), "Khoảng cách điểm trước: %.1fm | Góc: %.1f°", dist, bearing));
+            tvNavInfo.setText(String.format(Locale.getDefault(), "Cách điểm trước: %.1fm | Góc quay: %.1f°", dist, bearing));
         }
     }
 
