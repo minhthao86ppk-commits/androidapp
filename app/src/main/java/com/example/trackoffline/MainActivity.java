@@ -1,5 +1,7 @@
 package com.example.trackoffline;
 
+import com.example.trackoffline.R;
+
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.location.Location;
@@ -72,8 +74,10 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
 
         trackPoints.clear();
         isTracking = true;
-        // Cập nhật vị trí mỗi 2 giây hoặc khi di chuyển từ 1 mét trở lên
-        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 1, this);
+        if (locationManager != null) {
+            // Cập nhật vị trí mỗi 2 giây hoặc khi di chuyển từ 1m
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 1, this);
+        }
         tvStatus.setText("Trạng thái: Đang ghi hành trình GPS...");
         Toast.makeText(this, "Đã bắt đầu ghi lộ trình", Toast.LENGTH_SHORT).show();
     }
@@ -85,7 +89,9 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         }
 
         isTracking = false;
-        locationManager.removeUpdates(this);
+        if (locationManager != null) {
+            locationManager.removeUpdates(this);
+        }
         tvStatus.setText("Trạng thái: Đã dừng");
 
         if (trackPoints.isEmpty()) {
@@ -136,7 +142,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener 
         tvLocation.setText(String.format(Locale.getDefault(), "Tọa độ: %.6f, %.6f | Điểm: %d",
                 location.getLatitude(), location.getLongitude(), trackPoints.size()));
 
-        // Hướng dẫn dẫn đường cơ bản theo vết (Backtrack)
+        // Chỉ đường cơ bản theo vết (Backtrack)
         if (trackPoints.size() > 1) {
             Location prev = trackPoints.get(trackPoints.size() - 2);
             float dist = location.distanceTo(prev);
